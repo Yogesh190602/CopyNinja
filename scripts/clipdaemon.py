@@ -1,20 +1,35 @@
 #!/usr/bin/env python3
 """
-clipdaemon.py - Simple clipboard history daemon for GNOME Wayland
-Polls clipboard using wl-paste with smart timing.
+clipdaemon.py - Clipboard history daemon for GNOME Wayland
+Receives clipboard text from the GNOME Shell extension via D-Bus.
+No polling, no subprocesses — pure event-driven.
 """
 
-import os
-import sys
 import json
 import time
-import signal
 import hashlib
-import subprocess
 from pathlib import Path
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib  # noqa: E402
 
 DATA_FILE = Path.home() / ".clipboard_history.json"
 MAX_ENTRIES = 50
+
+DBUS_NAME = "com.copyninja.Daemon"
+DBUS_PATH = "/com/copyninja/Daemon"
+
+INTROSPECTION_XML = """
+<node>
+  <interface name="com.copyninja.Daemon">
+    <method name="NewEntry">
+      <arg direction="in" type="s" name="text"/>
+    </method>
+  </interface>
+</node>
+"""
 
 
 def load_history():
@@ -36,17 +51,6 @@ def save_history(history):
 
 def get_hash(text):
     return hashlib.md5(text.encode()).hexdigest()[:12]
-
-
-def is_wl_running():
-    """Check if wl-clipboard is running."""
-    try:
-        result = subprocess.run(
-            ["pgrep", "-x", "wl-clipboard"], capture_output=True, timeout=1
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
 
 
 def process_text(text):
@@ -81,41 +85,54 @@ def process_text(text):
     save_history(history)
 
 
-def run_daemon():
-    """Run the daemon loop."""
-    print("Clipboard daemon started")
+def _handle_method_call(_connection, _sender, _path, _iface, method, params, invocation):
+    if method == "NewEntry":
+        text = params.unpack()[0]
+        process_text(text)
+        invocation.return_value(None)
 
-    last_content = ""
 
-    while True:
-        # Skip if wl-clipboard is running
-        if not is_wl_running():
-            try:
-                result = subprocess.run(
-                    ["wl-paste"], capture_output=True, text=True, timeout=0.5
-                )
-                text = result.stdout.strip()
+def _on_bus_acquired(connection, _name):
+    node_info = Gio.DBusNodeInfo.new_for_xml(INTROSPECTION_XML)
+    connection.register_object(
+        DBUS_PATH,
+        node_info.interfaces[0],
+        _handle_method_call,
+        None,
+        None,
+    )
+    print("D-Bus object registered")
 
-                # Only process if different from last
-                if text and text != last_content:
-                    last_content = text
-                    process_text(text)
-            except Exception:
-                pass
 
-        time.sleep(2)
+def _on_name_acquired(_connection, _name):
+    print("Clipboard daemon started (D-Bus)")
+
+
+def _on_name_lost(_connection, _name):
+    print("D-Bus name lost — another instance may be running")
+    loop.quit()
+
+
+loop = None
 
 
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] == "--once":
-        process_text(
-            subprocess.run(
-                ["wl-paste"], capture_output=True, text=True, timeout=1
-            ).stdout
-        )
-        return
+    global loop
+    loop = GLib.MainLoop()
 
-    run_daemon()
+    Gio.bus_own_name(
+        Gio.BusType.SESSION,
+        DBUS_NAME,
+        Gio.BusNameOwnerFlags.NONE,
+        _on_bus_acquired,
+        _on_name_acquired,
+        _on_name_lost,
+    )
+
+    try:
+        loop.run()
+    except KeyboardInterrupt:
+        loop.quit()
 
 
 if __name__ == "__main__":

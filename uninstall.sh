@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# uninstall.sh — Remove cliphist-x11 from the system
+# uninstall.sh — Remove copyninja from the system
 set -euo pipefail
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
@@ -8,23 +8,31 @@ warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 error() { echo -e "${RED}[✗]${NC} $*"; exit 1; }
 
 echo ""
-echo "  This will completely remove cliphist-x11 from your system."
+echo "  This will completely remove copyninja from your system."
 echo ""
 read -rp "  Continue? [y/N] " answer
 [[ "$answer" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
 
+# Disable and remove the GNOME Shell extension
+EXT_UUID="copyninja-clip@copyninja"
+if gnome-extensions disable "$EXT_UUID" 2>/dev/null; then
+    info "Disabled GNOME Shell extension."
+fi
+rm -rf "$HOME/.local/share/gnome-shell/extensions/$EXT_UUID"
+info "Removed GNOME Shell extension."
+
 # Stop and disable the systemd service
-if systemctl --user is-active cliphist.service &>/dev/null; then
-    systemctl --user stop cliphist.service
-    info "Stopped cliphist service."
+if systemctl --user is-active copyninja.service &>/dev/null; then
+    systemctl --user stop copyninja.service
+    info "Stopped copyninja service."
 fi
 
-if systemctl --user is-enabled cliphist.service &>/dev/null; then
-    systemctl --user disable cliphist.service
-    info "Disabled cliphist service."
+if systemctl --user is-enabled copyninja.service &>/dev/null; then
+    systemctl --user disable copyninja.service
+    info "Disabled copyninja service."
 fi
 
-rm -f "$HOME/.config/systemd/user/cliphist.service"
+rm -f "$HOME/.config/systemd/user/copyninja.service"
 systemctl --user daemon-reload
 info "Removed systemd unit file."
 
@@ -61,5 +69,5 @@ if [[ "$del_data" =~ ^[Yy]$ ]]; then
 fi
 
 echo ""
-info "cliphist-x11 has been uninstalled."
+info "copyninja has been uninstalled."
 echo ""

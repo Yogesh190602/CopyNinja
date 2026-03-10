@@ -1,0 +1,14 @@
+[Unit]
+Description=CopyNinja — Clipboard History Daemon (GNOME Wayland)
+Documentation=https://github.com/Yogesh190602/CopyNinja
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/clipdaemon.py
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=graphical-session.target

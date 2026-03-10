@@ -1,0 +1,7 @@
+{
+    "uuid": "copyninja-clip@copyninja",
+    "name": "CopyNinja Clipboard Relay",
+    "description": "Relays clipboard changes to CopyNinja daemon via D-Bus",
+    "shell-version": ["49"],
+    "version": 1
+}

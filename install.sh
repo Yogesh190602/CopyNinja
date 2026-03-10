@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — One-shot installer for cliphist (GNOME Wayland)
+# install.sh — One-shot installer for copyninja (GNOME Wayland)
 # Run as your normal user (NOT root).
 set -euo pipefail
 
@@ -53,7 +53,9 @@ for cmd in "${MISSING[@]}"; do
 done
 
 # Deduplicate
-PACKAGES_TO_INSTALL=($(printf '%s\n' "${PACKAGES_TO_INSTALL[@]}" | sort -u))
+if [[ ${#PACKAGES_TO_INSTALL[@]} -gt 0 ]]; then
+    PACKAGES_TO_INSTALL=($(printf '%s\n' "${PACKAGES_TO_INSTALL[@]}" | sort -u))
+fi
 
 if [[ ${#MISSING[@]} -gt 0 ]]; then
     warn "Missing: ${MISSING[*]}"
@@ -79,17 +81,35 @@ cp "$SCRIPT_DIR/scripts/clippick.py"   "$HOME/.local/bin/clippick.py"
 chmod +x "$HOME/.local/bin/clipdaemon.py"
 chmod +x "$HOME/.local/bin/clippick.py"
 
-# ── 3. Install systemd user service ────────────────────────────────────────
+# ── 3. Install GNOME Shell extension ──────────────────────────────────────
+info "Installing GNOME Shell extension…"
+EXT_UUID="copyninja-clip@copyninja"
+EXT_DIR="$HOME/.local/share/gnome-shell/extensions/$EXT_UUID"
+mkdir -p "$EXT_DIR"
+cp "$SCRIPT_DIR/extension/metadata.json" "$EXT_DIR/metadata.json"
+cp "$SCRIPT_DIR/extension/extension.js"  "$EXT_DIR/extension.js"
+info "Extension installed to $EXT_DIR"
+
+# Enable the extension (will take effect after shell restart on first install)
+if gnome-extensions enable "$EXT_UUID" 2>/dev/null; then
+    info "Extension enabled."
+else
+    warn "Extension installed but could not be enabled yet."
+    warn "Log out and back in, then run: gnome-extensions enable $EXT_UUID"
+fi
+
+# ── 4. Install systemd user service ────────────────────────────────────────
 info "Installing systemd user service…"
 SYSTEMD_DIR="$HOME/.config/systemd/user"
 mkdir -p "$SYSTEMD_DIR"
-cp "$SCRIPT_DIR/systemd/cliphist.service" "$SYSTEMD_DIR/cliphist.service"
+cp "$SCRIPT_DIR/systemd/copyninja.service" "$SYSTEMD_DIR/copyninja.service"
 
 systemctl --user daemon-reload
-systemctl --user enable --now cliphist.service
+systemctl --user enable --now copyninja.service
+systemctl --user restart copyninja
 info "Daemon started and enabled on login."
 
-# ── 4. Hotkey setup (GNOME) ───────────────────────────────────────────────
+# ── 5. Hotkey setup (GNOME) ───────────────────────────────────────────────
 info "Setting Super+Shift+V keybinding automatically…"
 CLIPHIST_CMD="$HOME/.local/bin/clippick.py"
 CUSTOM_PATH="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings"
@@ -128,7 +148,10 @@ info "Keybinding set: Super+Shift+V → clippick.py"
 
 # ── Done ───────────────────────────────────────────────────────────────────
 info "Installation complete!"
-echo "  Daemon status:  systemctl --user status cliphist"
+echo ""
+warn "If this is a first install, LOG OUT and back in for the GNOME Shell extension to load."
+echo ""
+echo "  Daemon status:  systemctl --user status copyninja"
 echo "  History file:   ~/.clipboard_history.json"
 echo ""
 echo "  Usage:"

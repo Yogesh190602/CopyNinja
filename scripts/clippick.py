@@ -263,7 +263,7 @@ def _relative_time(timestamp):
 
 class ClipPickApp(Gtk.Application):
     def __init__(self):
-        super().__init__(application_id="com.cliphist.picker")
+        super().__init__(application_id="com.copyninja.picker")
         self.window = None
         self.listbox = None
         self.search_entry = None
