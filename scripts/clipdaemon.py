@@ -35,9 +35,74 @@ INTROSPECTION_XML = """
 """
 
 
+def _import_graphical_env():
+    """Try to import WAYLAND_DISPLAY / DISPLAY from the graphical session via loginctl."""
+    try:
+        result = subprocess.run(
+            ["loginctl", "list-sessions", "--no-legend"],
+            capture_output=True, timeout=3, text=True,
+        )
+        for line in result.stdout.strip().splitlines():
+            sid = line.split()[0]
+            stype = subprocess.run(
+                ["loginctl", "show-session", sid, "-p", "Type", "--value"],
+                capture_output=True, timeout=3, text=True,
+            ).stdout.strip()
+            if stype in ("wayland", "x11"):
+                # Get environment from this session's leader PID
+                spid = subprocess.run(
+                    ["loginctl", "show-session", sid, "-p", "Leader", "--value"],
+                    capture_output=True, timeout=3, text=True,
+                ).stdout.strip()
+                if spid:
+                    env_path = Path(f"/proc/{spid}/environ")
+                    if env_path.exists():
+                        env_data = env_path.read_bytes().split(b"\0")
+                        for item in env_data:
+                            if item.startswith(b"WAYLAND_DISPLAY="):
+                                os.environ["WAYLAND_DISPLAY"] = item.split(b"=", 1)[1].decode()
+                            elif item.startswith(b"DISPLAY="):
+                                os.environ["DISPLAY"] = item.split(b"=", 1)[1].decode()
+                            elif item.startswith(b"XDG_RUNTIME_DIR="):
+                                os.environ.setdefault("XDG_RUNTIME_DIR", item.split(b"=", 1)[1].decode())
+                return stype
+    except Exception:
+        pass
+    return None
+
+
 def detect_session_type():
     """Detect whether the session is Wayland or X11."""
-    return os.environ.get("XDG_SESSION_TYPE", "unknown")
+    # 1. Check XDG_SESSION_TYPE
+    session = os.environ.get("XDG_SESSION_TYPE", "unknown")
+    if session in ("wayland", "x11"):
+        return session
+
+    # 2. Check display env vars
+    if os.environ.get("WAYLAND_DISPLAY"):
+        return "wayland"
+    if os.environ.get("DISPLAY"):
+        return "x11"
+
+    # 3. Try loginctl to find graphical session and import its env vars
+    detected = _import_graphical_env()
+    if detected:
+        return detected
+
+    # 4. Check running compositor processes as last resort
+    try:
+        for proc in ("Hyprland", "sway", "mutter", "kwin_wayland", "weston"):
+            r = subprocess.run(["pgrep", "-x", proc], capture_output=True, timeout=2)
+            if r.returncode == 0:
+                return "wayland"
+        for proc in ("Xorg", "i3", "openbox", "xfwm4"):
+            r = subprocess.run(["pgrep", "-x", proc], capture_output=True, timeout=2)
+            if r.returncode == 0:
+                return "x11"
+    except Exception:
+        pass
+
+    return "unknown"
 
 
 def load_history():

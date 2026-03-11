@@ -148,9 +148,25 @@ mkdir -p "$SYSTEMD_DIR"
 cp "$SCRIPT_DIR/systemd/copyninja.service" "$SYSTEMD_DIR/copyninja.service"
 
 systemctl --user daemon-reload
-systemctl --user enable --now copyninja.service
-systemctl --user restart copyninja
-info "Daemon started and enabled on login."
+systemctl --user enable copyninja.service
+
+# Only start now if we're in a graphical session (not SSH/TTY)
+if [[ "${XDG_SESSION_TYPE:-}" == "wayland" || "${XDG_SESSION_TYPE:-}" == "x11" ]]; then
+    systemctl --user restart copyninja.service
+    info "Daemon started and enabled on login."
+else
+    # Try to detect graphical session and start anyway
+    if loginctl list-sessions --no-legend 2>/dev/null | while read -r sid rest; do
+        stype=$(loginctl show-session "$sid" -p Type --value 2>/dev/null)
+        [[ "$stype" == "wayland" || "$stype" == "x11" ]] && exit 0
+        true
+    done; then
+        systemctl --user restart copyninja.service
+        info "Daemon started and enabled on login."
+    else
+        info "Daemon enabled on login (will start on next graphical session)."
+    fi
+fi
 
 # ── 4. Hotkey setup (DE-specific) ────────────────────────────────────────
 CLIPHIST_CMD="$HOME/.local/bin/clippick.py"
