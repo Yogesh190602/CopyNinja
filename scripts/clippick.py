@@ -7,6 +7,8 @@ Reads from JSON file and copies selected entry to clipboard.
 import sys
 import json
 import time
+import subprocess
+import shutil
 from pathlib import Path
 
 import gi
@@ -559,11 +561,31 @@ class ClipPickApp(Gtk.Application):
         text = getattr(row, "_entry_text", "")
         if text:
             self._copy_to_clipboard(text)
-            self.quit()
+            self.hold()
+            self.window.set_visible(False)
+            GLib.timeout_add(150, self._paste_and_quit)
 
     def _copy_to_clipboard(self, text):
         clipboard = Gdk.Display.get_default().get_clipboard()
         clipboard.set(text)
+
+    def _paste_and_quit(self):
+        self._simulate_paste()
+        self.quit()
+        return False
+
+    def _simulate_paste(self):
+        """Simulate Ctrl+V via wtype to auto-paste into the focused window."""
+        if shutil.which("wtype"):
+            try:
+                subprocess.Popen(
+                    ["wtype", "-M", "ctrl", "-k", "v"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                pass
+        return False
 
     def _on_key_pressed(self, controller, keyval, keycode, state):
         ctrl = state & Gdk.ModifierType.CONTROL_MASK
@@ -578,7 +600,9 @@ class ClipPickApp(Gtk.Application):
                 text = getattr(selected, "_entry_text", "")
                 if text:
                     self._copy_to_clipboard(text)
-                    self.quit()
+                    self.hold()
+                    self.window.set_visible(False)
+                    GLib.timeout_add(150, self._paste_and_quit)
             return True
 
         if ctrl:
