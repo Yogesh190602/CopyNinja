@@ -9,7 +9,9 @@ Supports **GNOME, KDE Plasma, Hyprland, Sway, i3, XFCE**, and more.
 
 ## How It Works
 
-CopyNinja's daemon monitors the system clipboard directly — no GNOME extension needed. On Wayland it uses `wl-paste --watch` (event-driven), on X11 it polls via `xclip`. Clipboard text is stored in a local JSON file.
+CopyNinja's daemon monitors the system clipboard directly — no GNOME extension needed. On Wayland it uses `wl-paste --watch` (event-driven), falling back to `xclip` polling on GNOME Wayland. On X11 it polls via `xclip`. Clipboard text is stored in a local JSON file.
+
+When you select an entry in the picker, it copies the text to your clipboard via GTK's `Gdk.Clipboard`. You then paste it yourself with **Ctrl+Shift+V** (terminal) or **Ctrl+V** (other apps).
 
 ```
 Copy in any app
@@ -23,6 +25,7 @@ Copy in any app
 │                                 │
 │  Wayland: wl-paste --watch      │
 │  X11: xclip polling (500ms)     │
+│  GNOME Wayland: xclip fallback  │
 │  + D-Bus input                  │
 │                                 │
 │  deduplicates (MD5 hash)        │
@@ -47,7 +50,7 @@ Super+Shift+V
 └────────────┬────────────────────┘
              │
              ▼
-      Clipboard updated (paste with Ctrl+V)
+      Clipboard updated (paste manually)
 ```
 
 ---
@@ -90,7 +93,7 @@ chmod +x uninstall.sh
 | `gtk4`            | Native UI + clipboard access         | All       |
 | `libnotify`       | `notify-send` alerts                 | All       |
 | `wl-clipboard`    | Clipboard monitoring (`wl-paste`)    | Wayland   |
-| `xclip`           | Clipboard monitoring                 | X11       |
+| `xclip`           | Clipboard monitoring + GNOME fallback| X11       |
 
 Install for Wayland (Arch):
 ```bash
@@ -174,12 +177,11 @@ systemctl --user disable copyninja
 
 ## Windows Comparison
 
-| Windows Win+V                | CopyNinja                        |
-|------------------------------|----------------------------------|
-| Clipboard history panel      | GTK picker UI                    |
-| Click entry to copy          | Click/Enter to copy to clipboard |
-| Auto-paste                   | Manual paste (Ctrl+V)            |
-| Cloud sync                   | Local-only JSON                  |
+| Windows Win+V                | CopyNinja                              |
+|------------------------------|----------------------------------------|
+| Clipboard history panel      | GTK picker UI                          |
+| Click entry to paste         | Click/Enter to copy, paste manually    |
+| Cloud sync                   | Local-only JSON                        |
 | Polling-based                | Event-driven (Wayland) / polling (X11) |
 
 ---

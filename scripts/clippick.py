@@ -559,12 +559,19 @@ class ClipPickApp(Gtk.Application):
             return
         text = getattr(row, "_entry_text", "")
         if text:
-            self._copy_to_clipboard(text)
-            self.quit()
+            self._copy_and_quit(text)
 
-    def _copy_to_clipboard(self, text):
+    def _copy_and_quit(self, text):
+        """Copy text to clipboard and quit after the compositor grabs it."""
         clipboard = Gdk.Display.get_default().get_clipboard()
         clipboard.set(text)
+        self.hold()
+        self.window.set_visible(False)
+        GLib.timeout_add(500, self._do_quit)
+
+    def _do_quit(self):
+        self.quit()
+        return False
 
     def _on_key_pressed(self, controller, keyval, keycode, state):
         ctrl = state & Gdk.ModifierType.CONTROL_MASK
@@ -578,8 +585,7 @@ class ClipPickApp(Gtk.Application):
             if selected and not getattr(selected, "_is_header", False):
                 text = getattr(selected, "_entry_text", "")
                 if text:
-                    self._copy_to_clipboard(text)
-                    self.quit()
+                    self._copy_and_quit(text)
             return True
 
         if ctrl:

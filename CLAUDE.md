@@ -11,7 +11,7 @@ CopyNinja is a lightweight clipboard history manager for **Linux desktops (Wayla
 The daemon monitors the system clipboard directly — using `wl-paste --watch` on Wayland or `xclip` polling on X11. It stores entries in a JSON file. A GTK picker reads that file to display history.
 
 - **clipdaemon.py** — Background daemon (systemd user service). Monitors the clipboard (Wayland via `wl-paste --watch`, X11 via `xclip` polling), also accepts text via D-Bus (`com.copyninja.Daemon.NewEntry`), deduplicates via MD5 hashing, stores entries in `~/.clipboard_history.json`.
-- **clippick.py** — GTK-based picker invoked by a keybinding. Reads `~/.clipboard_history.json`, copies the selected item to the clipboard. User pastes manually with Ctrl+V.
+- **clippick.py** — GTK-based picker invoked by a keybinding. Reads `~/.clipboard_history.json`, copies the selected item to the clipboard. User pastes manually with Ctrl+Shift+V.
 
 Config constant `MAX_ENTRIES` is at the top of `clipdaemon.py`.
 
@@ -42,4 +42,4 @@ journalctl --user -u copyninja -f         # live logs
 
 - No build step, tests, or linter configured — two Python 3 scripts.
 - The daemon is event-driven on Wayland (`wl-paste --watch` + GLib.IOChannel) and polling-based on X11 (`xclip` every 500ms).
-- The picker copies the selected item to clipboard. User pastes manually with Ctrl+V.
+- The picker copies the selected item to clipboard. User pastes manually with Ctrl+Shift+V.
