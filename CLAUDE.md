@@ -23,7 +23,7 @@ Config constant `MAX_ENTRIES` is at the top of `clipdaemon.py`.
 - `extension/extension.js` — GNOME Shell extension: clipboard relay via D-Bus
 - `extension/metadata.json` — Extension metadata (UUID, shell version)
 - `systemd/copyninja.service` — Systemd user unit (GNOME Wayland)
-- `install.sh` — Installs scripts, extension, and service; sets GNOME Super+Shift+V keybinding
+- `install.sh` — Installs scripts, extension, and service; sets GNOME Super+Shift+V keybinding; auto-logs out so extension loads immediately
 - `uninstall.sh` — Removes everything
 
 ## Installation & Service Commands

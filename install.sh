@@ -90,12 +90,18 @@ cp "$SCRIPT_DIR/extension/metadata.json" "$EXT_DIR/metadata.json"
 cp "$SCRIPT_DIR/extension/extension.js"  "$EXT_DIR/extension.js"
 info "Extension installed to $EXT_DIR"
 
-# Enable the extension (will take effect after shell restart on first install)
-if gnome-extensions enable "$EXT_UUID" 2>/dev/null; then
-    info "Extension enabled."
+# Enable the extension via gsettings (works even before shell has loaded it)
+ENABLED_EXTS=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo "@as []")
+if echo "$ENABLED_EXTS" | grep -q "$EXT_UUID"; then
+    info "Extension already enabled."
 else
-    warn "Extension installed but could not be enabled yet."
-    warn "Log out and back in, then run: gnome-extensions enable $EXT_UUID"
+    if [[ "$ENABLED_EXTS" == "@as []" ]]; then
+        NEW_EXTS="['$EXT_UUID']"
+    else
+        NEW_EXTS=$(echo "$ENABLED_EXTS" | sed "s|]|, '$EXT_UUID']|")
+    fi
+    gsettings set org.gnome.shell enabled-extensions "$NEW_EXTS"
+    info "Extension enabled via gsettings (takes effect on next login)."
 fi
 
 # ── 4. Install systemd user service ────────────────────────────────────────
@@ -149,8 +155,6 @@ info "Keybinding set: Super+Shift+V → clippick.py"
 # ── Done ───────────────────────────────────────────────────────────────────
 info "Installation complete!"
 echo ""
-warn "If this is a first install, LOG OUT and back in for the GNOME Shell extension to load."
-echo ""
 echo "  Daemon status:  systemctl --user status copyninja"
 echo "  History file:   ~/.clipboard_history.json"
 echo ""
@@ -159,3 +163,7 @@ echo "    - Copy text normally, it will be saved automatically"
 echo "    - Press Super+Shift+V to open picker"
 echo "    - Click on any entry to copy it to clipboard"
 echo "    - Press Ctrl+V to paste in any app"
+echo ""
+warn "Logging out in 3 seconds so the GNOME Shell extension can load…"
+sleep 3
+gnome-session-quit --logout --no-prompt

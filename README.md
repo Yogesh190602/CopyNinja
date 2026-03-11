@@ -63,14 +63,15 @@ chmod +x install.sh
 ./install.sh
 ```
 
-> **Note:** Log out and back in after first install for the GNOME Shell extension to load.
+> **Note:** The installer automatically logs you out after completing so the GNOME Shell extension loads on next login.
 
 The installer:
 - Installs dependencies (Arch/Fedora/Ubuntu)
 - Copies scripts to `~/.local/bin/`
-- Installs the GNOME Shell extension
+- Installs and enables the GNOME Shell extension (GNOME 45–49)
 - Enables the systemd user service
 - Sets the `Super+Shift+V` keybinding
+- **Automatically logs you out** so the extension loads on next login
 
 ---
 
