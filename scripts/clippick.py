@@ -581,17 +581,21 @@ class ClipPickApp(Gtk.Application):
 
     def _simulate_paste(self):
         """Simulate Ctrl+V to auto-paste into the focused window."""
-        session = os.environ.get("XDG_SESSION_TYPE", "unknown")
-        if session == "wayland" and shutil.which("wtype"):
+        # Try wtype first (works on wlroots: Hyprland, Sway)
+        # Then xdotool (works on X11 and GNOME Wayland via XWayland)
+        if shutil.which("wtype"):
             try:
-                subprocess.Popen(
+                result = subprocess.run(
                     ["wtype", "-M", "ctrl", "-k", "v"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
+                    timeout=2,
                 )
+                if result.returncode == 0:
+                    return False
             except Exception:
                 pass
-        elif session == "x11" and shutil.which("xdotool"):
+        if shutil.which("xdotool"):
             try:
                 subprocess.Popen(
                     ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
