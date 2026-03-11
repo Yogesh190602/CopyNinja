@@ -176,15 +176,46 @@ def _on_bus_acquired(connection, _name):
     )
     print("D-Bus object registered")
 
-    # Start clipboard watcher
+    # Start clipboard watcher (with retry if no display yet)
+    _try_start_watcher()
+
+
+# ── Watcher startup with retry ────────────────────────────────────────────
+
+_watcher_started = False
+_retry_count = 0
+_MAX_RETRIES = 60  # retry for up to 5 minutes (every 5s)
+
+
+def _try_start_watcher():
+    """Try to start clipboard watcher. Retry every 5s if no display available."""
+    global _watcher_started, _retry_count
+
     session = detect_session_type()
+
     if session == "wayland" and shutil.which("wl-paste"):
-        _start_wayland_watcher()
+        if _start_wayland_watcher():
+            _watcher_started = True
+            return
     elif session == "x11" and shutil.which("xclip"):
-        _start_x11_watcher()
+        if _start_x11_watcher():
+            _watcher_started = True
+            return
+
+    _retry_count += 1
+    if _retry_count <= _MAX_RETRIES:
+        print(f"No display found (attempt {_retry_count}/{_MAX_RETRIES}), retrying in 5s…")
+        GLib.timeout_add_seconds(5, _retry_start_watcher)
     else:
-        print(f"Warning: No clipboard watcher available for session type '{session}'")
+        print("Warning: Could not connect to clipboard after max retries.")
         print("Clipboard monitoring via D-Bus only.")
+
+
+def _retry_start_watcher():
+    """GLib callback to retry watcher startup."""
+    if not _watcher_started:
+        _try_start_watcher()
+    return False  # don't repeat this timeout
 
 
 # ── Wayland clipboard watcher (wl-paste --watch) ─────────────────────────
@@ -199,16 +230,29 @@ def _start_wayland_watcher():
         _wl_proc = subprocess.Popen(
             ["wl-paste", "--type", "text/plain", "--watch", "cat"],
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
         )
+        # Check if it started successfully (give it a moment)
+        try:
+            _wl_proc.wait(timeout=0.3)
+            # If it exited immediately, it failed (no display, etc.)
+            stderr = _wl_proc.stderr.read().decode(errors="replace").strip()
+            print(f"wl-paste exited immediately: {stderr}")
+            _wl_proc = None
+            return False
+        except subprocess.TimeoutExpired:
+            pass  # still running = good
         # Watch stdout fd for incoming data
         channel = GLib.IOChannel.unix_new(_wl_proc.stdout.fileno())
         channel.set_encoding(None)
         channel.set_flags(GLib.IOFlags.NONBLOCK)
         GLib.io_add_watch(channel, GLib.IOCondition.IN, _on_wl_clip_data)
         print("Wayland clipboard watcher started (wl-paste --watch)")
+        return True
     except Exception as e:
         print(f"Failed to start Wayland watcher: {e}")
+        _wl_proc = None
+        return False
 
 
 _wl_buffer = b""
@@ -255,12 +299,24 @@ _x11_last_hash = None
 def _start_x11_watcher():
     """Poll X11 clipboard every 500ms using xclip."""
     global _x11_last_hash
+    # Test if xclip can connect to the display
+    try:
+        test = subprocess.run(
+            ["xclip", "-selection", "clipboard", "-o"],
+            capture_output=True, timeout=2,
+        )
+        if test.returncode != 0 and b"Can't open display" in test.stderr:
+            print(f"xclip cannot connect to display")
+            return False
+    except Exception:
+        return False
     # Get initial clipboard content hash
     text = _x11_get_clipboard()
     if text:
         _x11_last_hash = get_hash(text)
     GLib.timeout_add(500, _x11_poll)
     print("X11 clipboard watcher started (xclip polling)")
+    return True
 
 
 def _x11_get_clipboard():
