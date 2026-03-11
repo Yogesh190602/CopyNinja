@@ -10,6 +10,23 @@ error() { echo -e "${RED}[✗]${NC} $*"; exit 1; }
 DESKTOP="${XDG_CURRENT_DESKTOP:-unknown}"
 COPYNINJA_MARKER="# CopyNinja keybinding"
 
+# If XDG var isn't set (SSH, TTY), detect DE from running processes
+if [[ "$DESKTOP" == "unknown" ]]; then
+    if pgrep -x "gnome-shell" &>/dev/null; then
+        DESKTOP="GNOME"
+    elif pgrep -x "Hyprland" &>/dev/null; then
+        DESKTOP="Hyprland"
+    elif pgrep -x "sway" &>/dev/null; then
+        DESKTOP="sway"
+    elif pgrep -x "i3" &>/dev/null; then
+        DESKTOP="i3"
+    elif pgrep -x "plasmashell" &>/dev/null; then
+        DESKTOP="KDE"
+    elif pgrep -x "xfce4-session" &>/dev/null; then
+        DESKTOP="XFCE"
+    fi
+fi
+
 echo ""
 echo "  This will completely remove CopyNinja from your system."
 echo ""

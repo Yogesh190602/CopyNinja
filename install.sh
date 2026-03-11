@@ -13,10 +13,56 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ── 0. Detect session ────────────────────────────────────────────────────
 SESSION_TYPE="${XDG_SESSION_TYPE:-unknown}"
 DESKTOP="${XDG_CURRENT_DESKTOP:-unknown}"
+
+# If XDG vars aren't set (SSH, TTY, etc.), detect from running processes
+if [[ "$SESSION_TYPE" == "unknown" || "$SESSION_TYPE" == "tty" ]]; then
+    # Try loginctl to get the graphical session type
+    if command -v loginctl &>/dev/null; then
+        GRAPHICAL_SESSION=$(loginctl list-sessions --no-legend 2>/dev/null \
+            | awk '{print $1}' \
+            | while read -r sid; do
+                stype=$(loginctl show-session "$sid" -p Type --value 2>/dev/null)
+                if [[ "$stype" == "wayland" || "$stype" == "x11" ]]; then
+                    echo "$stype"
+                    break
+                fi
+            done)
+        if [[ -n "${GRAPHICAL_SESSION:-}" ]]; then
+            SESSION_TYPE="$GRAPHICAL_SESSION"
+        fi
+    fi
+    # Fallback: check for Wayland/X11 compositor processes
+    if [[ "$SESSION_TYPE" == "unknown" || "$SESSION_TYPE" == "tty" ]]; then
+        if pgrep -x "Hyprland|sway|mutter|kwin_wayland|weston" &>/dev/null; then
+            SESSION_TYPE="wayland"
+        elif pgrep -x "Xorg|Xwayland|i3|openbox|xfwm4" &>/dev/null; then
+            SESSION_TYPE="x11"
+        fi
+    fi
+fi
+
+if [[ "$DESKTOP" == "unknown" ]]; then
+    # Detect DE/WM from running processes
+    if pgrep -x "gnome-shell" &>/dev/null; then
+        DESKTOP="GNOME"
+    elif pgrep -x "Hyprland" &>/dev/null; then
+        DESKTOP="Hyprland"
+    elif pgrep -x "sway" &>/dev/null; then
+        DESKTOP="sway"
+    elif pgrep -x "i3" &>/dev/null; then
+        DESKTOP="i3"
+    elif pgrep -x "plasmashell" &>/dev/null; then
+        DESKTOP="KDE"
+    elif pgrep -x "xfce4-session" &>/dev/null; then
+        DESKTOP="XFCE"
+    fi
+fi
+
 info "Detected session: $SESSION_TYPE ($DESKTOP)"
 
 if [[ "$SESSION_TYPE" != "wayland" && "$SESSION_TYPE" != "x11" ]]; then
-    warn "Unknown session type '$SESSION_TYPE'. Proceeding anyway — you may need to configure clipboard monitoring manually."
+    warn "Could not detect session type. Proceeding anyway — installing both Wayland and X11 tools."
+    SESSION_TYPE="both"
 fi
 
 # ── 1. Check dependencies ────────────────────────────────────────────────
@@ -31,10 +77,11 @@ for cmd in python3 notify-send; do
 done
 
 # Session-specific tools
-if [[ "$SESSION_TYPE" == "wayland" ]]; then
+if [[ "$SESSION_TYPE" == "wayland" || "$SESSION_TYPE" == "both" ]]; then
     command -v wl-paste &>/dev/null || MISSING+=("wl-paste")
     command -v wtype &>/dev/null || MISSING+=("wtype")
-elif [[ "$SESSION_TYPE" == "x11" ]]; then
+fi
+if [[ "$SESSION_TYPE" == "x11" || "$SESSION_TYPE" == "both" ]]; then
     command -v xclip &>/dev/null || MISSING+=("xclip")
     command -v xdotool &>/dev/null || MISSING+=("xdotool")
 fi
