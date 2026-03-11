@@ -61,6 +61,9 @@ if command -v gsettings &>/dev/null; then
     done
 fi
 
+# Remove autostart entry (if leftover from install)
+rm -f "$HOME/.config/autostart/copyninja-enable.desktop"
+
 # Remove clipboard history
 read -rp "  Delete clipboard history (~/.clipboard_history.json)? [y/N] " del_data
 if [[ "$del_data" =~ ^[Yy]$ ]]; then

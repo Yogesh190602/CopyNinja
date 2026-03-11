@@ -90,19 +90,33 @@ cp "$SCRIPT_DIR/extension/metadata.json" "$EXT_DIR/metadata.json"
 cp "$SCRIPT_DIR/extension/extension.js"  "$EXT_DIR/extension.js"
 info "Extension installed to $EXT_DIR"
 
-# Enable the extension via gsettings (works even before shell has loaded it)
+# Enable the extension via gsettings so GNOME knows about it on next login
 ENABLED_EXTS=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo "@as []")
-if echo "$ENABLED_EXTS" | grep -q "$EXT_UUID"; then
-    info "Extension already enabled."
-else
+if ! echo "$ENABLED_EXTS" | grep -q "$EXT_UUID"; then
     if [[ "$ENABLED_EXTS" == "@as []" ]]; then
         NEW_EXTS="['$EXT_UUID']"
     else
         NEW_EXTS=$(echo "$ENABLED_EXTS" | sed "s|]|, '$EXT_UUID']|")
     fi
     gsettings set org.gnome.shell enabled-extensions "$NEW_EXTS"
-    info "Extension enabled via gsettings (takes effect on next login)."
 fi
+
+# Create a one-shot autostart entry that activates the extension after login,
+# then removes itself. gsettings alone puts it in the list but GNOME Shell
+# needs `gnome-extensions enable` after it has loaded the extension.
+AUTOSTART_DIR="$HOME/.config/autostart"
+AUTOSTART_FILE="$AUTOSTART_DIR/copyninja-enable.desktop"
+mkdir -p "$AUTOSTART_DIR"
+cat > "$AUTOSTART_FILE" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=CopyNinja Extension Enabler
+Exec=bash -c 'sleep 3 && gnome-extensions enable $EXT_UUID && rm -f $AUTOSTART_FILE'
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+DESKTOP
+info "Extension will activate on next login."
 
 # ── 4. Install systemd user service ────────────────────────────────────────
 info "Installing systemd user service…"
