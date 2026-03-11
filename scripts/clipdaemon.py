@@ -194,18 +194,23 @@ def _try_start_watcher():
 
     session = detect_session_type()
 
-    if session == "wayland" and shutil.which("wl-paste"):
-        if _start_wayland_watcher():
+    if session == "wayland":
+        # Try wl-paste --watch first (works on wlroots: Hyprland, Sway, etc.)
+        if shutil.which("wl-paste") and _start_wayland_watcher():
             _watcher_started = True
             return
-    elif session == "x11" and shutil.which("xclip"):
-        if _start_x11_watcher():
+        # Fall back to xclip polling via XWayland (works on GNOME Wayland)
+        if shutil.which("xclip") and _start_x11_watcher():
+            _watcher_started = True
+            return
+    elif session == "x11":
+        if shutil.which("xclip") and _start_x11_watcher():
             _watcher_started = True
             return
 
     _retry_count += 1
     if _retry_count <= _MAX_RETRIES:
-        print(f"No display found (attempt {_retry_count}/{_MAX_RETRIES}), retrying in 5s…", flush=True)
+        print(f"No clipboard access yet (attempt {_retry_count}/{_MAX_RETRIES}), retrying in 5s…", flush=True)
         GLib.timeout_add_seconds(5, _retry_start_watcher)
     else:
         print("Warning: Could not connect to clipboard after max retries.", flush=True)

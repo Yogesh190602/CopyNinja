@@ -77,12 +77,13 @@ for cmd in python3 notify-send; do
 done
 
 # Session-specific tools
+# xclip is always needed (fallback for GNOME Wayland via XWayland + X11)
+command -v xclip &>/dev/null || MISSING+=("xclip")
 if [[ "$SESSION_TYPE" == "wayland" || "$SESSION_TYPE" == "both" ]]; then
     command -v wl-paste &>/dev/null || MISSING+=("wl-paste")
     command -v wtype &>/dev/null || MISSING+=("wtype")
 fi
 if [[ "$SESSION_TYPE" == "x11" || "$SESSION_TYPE" == "both" ]]; then
-    command -v xclip &>/dev/null || MISSING+=("xclip")
     command -v xdotool &>/dev/null || MISSING+=("xdotool")
 fi
 
