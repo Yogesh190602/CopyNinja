@@ -11,6 +11,7 @@ import hashlib
 import subprocess
 import os
 import shutil
+import threading
 from pathlib import Path
 
 import gi
@@ -174,7 +175,7 @@ def _on_bus_acquired(connection, _name):
         None,
         None,
     )
-    print("D-Bus object registered")
+    print("D-Bus object registered", flush=True)
 
     # Start clipboard watcher (with retry if no display yet)
     _try_start_watcher()
@@ -204,11 +205,11 @@ def _try_start_watcher():
 
     _retry_count += 1
     if _retry_count <= _MAX_RETRIES:
-        print(f"No display found (attempt {_retry_count}/{_MAX_RETRIES}), retrying in 5s…")
+        print(f"No display found (attempt {_retry_count}/{_MAX_RETRIES}), retrying in 5s…", flush=True)
         GLib.timeout_add_seconds(5, _retry_start_watcher)
     else:
-        print("Warning: Could not connect to clipboard after max retries.")
-        print("Clipboard monitoring via D-Bus only.")
+        print("Warning: Could not connect to clipboard after max retries.", flush=True)
+        print("Clipboard monitoring via D-Bus only.", flush=True)
 
 
 def _retry_start_watcher():
@@ -224,71 +225,53 @@ _wl_proc = None
 
 
 def _start_wayland_watcher():
-    """Spawn wl-paste --watch to get notified on clipboard changes."""
+    """Spawn wl-paste --watch and read clipboard changes in a background thread."""
     global _wl_proc
     try:
+        # wl-paste --watch echo "" prints an empty line each time clipboard changes
+        # We then fetch the actual content with wl-paste --no-newline
         _wl_proc = subprocess.Popen(
-            ["wl-paste", "--type", "text/plain", "--watch", "cat"],
+            ["wl-paste", "--type", "text/plain", "--watch", "echo", ""],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
         # Check if it started successfully (give it a moment)
         try:
-            _wl_proc.wait(timeout=0.3)
+            _wl_proc.wait(timeout=0.5)
             # If it exited immediately, it failed (no display, etc.)
             stderr = _wl_proc.stderr.read().decode(errors="replace").strip()
-            print(f"wl-paste exited immediately: {stderr}")
+            print(f"wl-paste exited immediately: {stderr}", flush=True)
             _wl_proc = None
             return False
         except subprocess.TimeoutExpired:
             pass  # still running = good
-        # Watch stdout fd for incoming data
-        channel = GLib.IOChannel.unix_new(_wl_proc.stdout.fileno())
-        channel.set_encoding(None)
-        channel.set_flags(GLib.IOFlags.NONBLOCK)
-        GLib.io_add_watch(channel, GLib.IOCondition.IN, _on_wl_clip_data)
-        print("Wayland clipboard watcher started (wl-paste --watch)")
+
+        # Start background thread to read notifications
+        thread = threading.Thread(target=_wayland_reader, args=(_wl_proc,), daemon=True)
+        thread.start()
+        print("Wayland clipboard watcher started (wl-paste --watch)", flush=True)
         return True
     except Exception as e:
-        print(f"Failed to start Wayland watcher: {e}")
+        print(f"Failed to start Wayland watcher: {e}", flush=True)
         _wl_proc = None
         return False
 
 
-_wl_buffer = b""
-
-
-def _on_wl_clip_data(channel, condition):
-    """Called when wl-paste --watch writes new clipboard content to stdout."""
-    global _wl_buffer
-    try:
-        data = channel.read(65536)
-        if data[0] == GLib.IOStatus.NORMAL:
-            _wl_buffer += data[1]
-            # wl-paste --watch cat outputs clipboard content then waits for next change
-            # Process accumulated buffer after a short delay to batch reads
-            GLib.timeout_add(50, _process_wl_buffer)
-        elif data[0] == GLib.IOStatus.EOF:
-            # Process any remaining data
-            if _wl_buffer:
-                _process_wl_buffer()
-            return False
-    except Exception:
-        pass
-    return True
-
-
-def _process_wl_buffer():
-    """Process accumulated wl-paste buffer."""
-    global _wl_buffer
-    if _wl_buffer:
+def _wayland_reader(proc):
+    """Background thread: reads wl-paste --watch notifications, fetches content."""
+    for _ in proc.stdout:
+        # Each line means clipboard changed — fetch current content
         try:
-            text = _wl_buffer.decode("utf-8", errors="replace")
-            _wl_buffer = b""
-            process_text(text)
+            result = subprocess.run(
+                ["wl-paste", "--type", "text/plain", "--no-newline"],
+                capture_output=True, timeout=2,
+            )
+            if result.returncode == 0:
+                text = result.stdout.decode("utf-8", errors="replace")
+                if text.strip():
+                    GLib.idle_add(process_text, text)
         except Exception:
-            _wl_buffer = b""
-    return False
+            pass
 
 
 # ── X11 clipboard watcher (xclip polling) ────────────────────────────────
@@ -306,7 +289,7 @@ def _start_x11_watcher():
             capture_output=True, timeout=2,
         )
         if test.returncode != 0 and b"Can't open display" in test.stderr:
-            print(f"xclip cannot connect to display")
+            print("xclip cannot connect to display", flush=True)
             return False
     except Exception:
         return False
@@ -315,7 +298,7 @@ def _start_x11_watcher():
     if text:
         _x11_last_hash = get_hash(text)
     GLib.timeout_add(500, _x11_poll)
-    print("X11 clipboard watcher started (xclip polling)")
+    print("X11 clipboard watcher started (xclip polling)", flush=True)
     return True
 
 
@@ -347,11 +330,11 @@ def _x11_poll():
 
 
 def _on_name_acquired(_connection, _name):
-    print("Clipboard daemon started (D-Bus)")
+    print("Clipboard daemon started (D-Bus)", flush=True)
 
 
 def _on_name_lost(_connection, _name):
-    print("D-Bus name lost — another instance may be running")
+    print("D-Bus name lost — another instance may be running", flush=True)
     loop.quit()
 
 
