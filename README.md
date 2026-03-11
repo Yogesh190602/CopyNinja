@@ -45,11 +45,11 @@ Super+Shift+V
 │  reads clipboard_history.json   │
 │  shows Windows-like UI          │
 │  selection copies to clipboard  │
+│  auto-pastes via wtype          │
 └────────────┬────────────────────┘
              │
              ▼
-      Clipboard updated
-      (manual paste via Ctrl+V)
+      Clipboard updated + auto-pasted
 ```
 
 ---
@@ -92,10 +92,11 @@ chmod +x uninstall.sh
 | `python-gobject`  | GTK / GLib / D-Bus bindings  |
 | `gtk4`            | Native UI + clipboard access |
 | `libnotify`       | `notify-send` alerts         |
+| `wtype`           | Auto-paste via simulated Ctrl+V (Wayland) |
 
 Install all at once (Arch):
 ```bash
-sudo pacman -S python python-gobject gtk4 libnotify
+sudo pacman -S python python-gobject gtk4 libnotify wtype
 ```
 
 ---
@@ -124,7 +125,7 @@ sudo pacman -S python python-gobject gtk4 libnotify
 
 | Key       | Action                             |
 |-----------|------------------------------------|
-| `Enter`   | Copy selected item                 |
+| `Enter`   | Copy selected item and auto-paste  |
 | `Ctrl+D`  | Delete selected item               |
 | `Ctrl+P`  | Pin/unpin selected item            |
 | `Ctrl+L`  | Clear all (press twice to confirm) |
@@ -166,8 +167,8 @@ systemctl --user disable copyninja
 | Windows Win+V                | CopyNinja                        |
 |------------------------------|----------------------------------|
 | Clipboard history panel      | GTK picker UI                    |
-| Click entry to copy          | Click/Enter to copy              |
-| Manual paste (Ctrl+V)        | Manual paste (Ctrl+V)            |
+| Click entry to copy          | Click/Enter to copy + auto-paste |
+| Auto-paste                   | Auto-paste via `wtype`           |
 | Cloud sync                   | Local-only JSON                  |
 | Polling-based                | Event-driven (D-Bus)             |
 

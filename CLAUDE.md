@@ -12,7 +12,7 @@ A GNOME Shell extension detects clipboard changes and relays text to a backgroun
 
 - **extension/extension.js** — GNOME Shell extension. Listens for `Meta.Selection` owner-changed events and sends text to the daemon via D-Bus (`com.copyninja.Daemon.NewEntry`).
 - **clipdaemon.py** — Background daemon (systemd user service). Owns the `com.copyninja.Daemon` D-Bus name, deduplicates via MD5 hashing, stores entries in `~/.clipboard_history.json`.
-- **clippick.py** — GTK-based picker invoked by a GNOME keybinding. Reads `~/.clipboard_history.json` and sets the clipboard to the selected item. No auto-paste (Windows-like behavior).
+- **clippick.py** — GTK-based picker invoked by a GNOME keybinding. Reads `~/.clipboard_history.json`, copies the selected item, and auto-pastes into the previously focused window via `wtype` (graceful fallback to copy-only if `wtype` is missing).
 
 Config constant `MAX_ENTRIES` is at the top of `clipdaemon.py`.
 
@@ -37,10 +37,10 @@ journalctl --user -u copyninja -f         # live logs
 
 ## Dependencies
 
-`python`, `python-gobject`, `gtk4`, `libnotify`.
+`python`, `python-gobject`, `gtk4`, `libnotify`, `wtype`.
 
 ## Development Notes
 
 - No build step, tests, or linter configured — two Python 3 scripts + one GNOME Shell extension (ES module).
 - The daemon is event-driven (GLib.MainLoop + D-Bus) — no polling or subprocesses.
-- The UI is intentionally copy-only (no auto-paste) to match Windows Win+V behavior.
+- The picker auto-pastes into the previously focused window using `wtype` (Wayland keypress simulator). Falls back to copy-only if `wtype` is not installed.

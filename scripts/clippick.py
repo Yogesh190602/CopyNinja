@@ -563,7 +563,7 @@ class ClipPickApp(Gtk.Application):
             self._copy_to_clipboard(text)
             self.hold()
             self.window.set_visible(False)
-            GLib.timeout_add(150, self._paste_and_quit)
+            GLib.timeout_add(200, self._paste_and_quit)
 
     def _copy_to_clipboard(self, text):
         clipboard = Gdk.Display.get_default().get_clipboard()
@@ -571,6 +571,10 @@ class ClipPickApp(Gtk.Application):
 
     def _paste_and_quit(self):
         self._simulate_paste()
+        GLib.timeout_add(300, self._do_quit)
+        return False
+
+    def _do_quit(self):
         self.quit()
         return False
 
@@ -602,7 +606,7 @@ class ClipPickApp(Gtk.Application):
                     self._copy_to_clipboard(text)
                     self.hold()
                     self.window.set_visible(False)
-                    GLib.timeout_add(150, self._paste_and_quit)
+                    GLib.timeout_add(200, self._paste_and_quit)
             return True
 
         if ctrl:

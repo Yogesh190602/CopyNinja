@@ -25,7 +25,7 @@ info "Checking dependencies…"
 MISSING=()
 PACKAGES_TO_INSTALL=()
 
-for cmd in python3 notify-send gsettings; do
+for cmd in python3 notify-send gsettings wtype; do
     command -v "$cmd" &>/dev/null || MISSING+=("$cmd")
 done
 
@@ -49,6 +49,7 @@ for cmd in "${MISSING[@]}"; do
         python3)     PACKAGES_TO_INSTALL+=("python") ;;
         notify-send) PACKAGES_TO_INSTALL+=("libnotify") ;;
         gsettings)   PACKAGES_TO_INSTALL+=("glib2") ;;
+        wtype)       PACKAGES_TO_INSTALL+=("wtype") ;;
     esac
 done
 
@@ -85,38 +86,51 @@ chmod +x "$HOME/.local/bin/clippick.py"
 info "Installing GNOME Shell extension…"
 EXT_UUID="copyninja-clip@copyninja"
 EXT_DIR="$HOME/.local/share/gnome-shell/extensions/$EXT_UUID"
-mkdir -p "$EXT_DIR"
-cp "$SCRIPT_DIR/extension/metadata.json" "$EXT_DIR/metadata.json"
-cp "$SCRIPT_DIR/extension/extension.js"  "$EXT_DIR/extension.js"
-info "Extension installed to $EXT_DIR"
 
-# Enable the extension via gsettings so GNOME knows about it on next login
-ENABLED_EXTS=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo "@as []")
-if ! echo "$ENABLED_EXTS" | grep -q "$EXT_UUID"; then
-    if [[ "$ENABLED_EXTS" == "@as []" ]]; then
-        NEW_EXTS="['$EXT_UUID']"
+# Check if the extension is already active — skip install to avoid crashing
+# GNOME Shell on Wayland (force-installing a running extension can crash it).
+EXT_STATE=$(gnome-extensions info "$EXT_UUID" 2>/dev/null | grep -oP '(?<=State: )\S+' || echo "unknown")
+NEEDS_LOGOUT=false
+
+if [[ "$EXT_STATE" == "ACTIVE" || "$EXT_STATE" == "ENABLED" ]]; then
+    # Update files in place (safe — no force reload)
+    mkdir -p "$EXT_DIR"
+    cp "$SCRIPT_DIR/extension/metadata.json" "$EXT_DIR/metadata.json"
+    cp "$SCRIPT_DIR/extension/extension.js"  "$EXT_DIR/extension.js"
+    info "Extension already active — files updated (takes effect on next login)."
+else
+    # Fresh install via gnome-extensions install (notifies the shell)
+    EXT_ZIP=$(mktemp /tmp/copyninja-ext-XXXXXX.zip)
+    (cd "$SCRIPT_DIR/extension" && zip -j "$EXT_ZIP" metadata.json extension.js) >/dev/null
+    gnome-extensions install --force "$EXT_ZIP"
+    rm -f "$EXT_ZIP"
+    info "Extension installed via gnome-extensions install"
+
+    # Try to enable it
+    if gnome-extensions enable "$EXT_UUID" 2>/dev/null; then
+        EXT_STATE=$(gnome-extensions info "$EXT_UUID" 2>/dev/null | grep -oP '(?<=State: )\S+' || echo "unknown")
+        if [[ "$EXT_STATE" == "ACTIVE" || "$EXT_STATE" == "ENABLED" ]]; then
+            info "Extension enabled in current session — no logout needed."
+        else
+            NEEDS_LOGOUT=true
+        fi
     else
-        NEW_EXTS=$(echo "$ENABLED_EXTS" | sed "s|]|, '$EXT_UUID']|")
+        NEEDS_LOGOUT=true
     fi
-    gsettings set org.gnome.shell enabled-extensions "$NEW_EXTS"
-fi
 
-# Create a one-shot autostart entry that activates the extension after login,
-# then removes itself. gsettings alone puts it in the list but GNOME Shell
-# needs `gnome-extensions enable` after it has loaded the extension.
-AUTOSTART_DIR="$HOME/.config/autostart"
-AUTOSTART_FILE="$AUTOSTART_DIR/copyninja-enable.desktop"
-mkdir -p "$AUTOSTART_DIR"
-cat > "$AUTOSTART_FILE" <<DESKTOP
-[Desktop Entry]
-Type=Application
-Name=CopyNinja Extension Enabler
-Exec=bash -c 'sleep 3 && gnome-extensions enable $EXT_UUID && rm -f $AUTOSTART_FILE'
-Hidden=false
-NoDisplay=true
-X-GNOME-Autostart-enabled=true
-DESKTOP
-info "Extension will activate on next login."
+    if [[ "$NEEDS_LOGOUT" == true ]]; then
+        ENABLED_EXTS=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo "@as []")
+        if ! echo "$ENABLED_EXTS" | grep -q "$EXT_UUID"; then
+            if [[ "$ENABLED_EXTS" == "@as []" ]]; then
+                NEW_EXTS="['$EXT_UUID']"
+            else
+                NEW_EXTS=$(echo "$ENABLED_EXTS" | sed "s|]|, '$EXT_UUID']|")
+            fi
+            gsettings set org.gnome.shell enabled-extensions "$NEW_EXTS"
+        fi
+        warn "Extension installed but could not activate in this session — a logout is needed."
+    fi
+fi
 
 # ── 4. Install systemd user service ────────────────────────────────────────
 info "Installing systemd user service…"
@@ -175,9 +189,10 @@ echo ""
 echo "  Usage:"
 echo "    - Copy text normally, it will be saved automatically"
 echo "    - Press Super+Shift+V to open picker"
-echo "    - Click on any entry to copy it to clipboard"
-echo "    - Press Ctrl+V to paste in any app"
+echo "    - Click on any entry to copy and auto-paste"
 echo ""
-warn "Logging out in 3 seconds so the GNOME Shell extension can load…"
-sleep 3
-gnome-session-quit --logout --no-prompt
+if [[ "$NEEDS_LOGOUT" == true ]]; then
+    warn "Please log out and back in to activate the GNOME Shell extension."
+else
+    info "Everything is ready — no logout needed. Enjoy CopyNinja!"
+fi
