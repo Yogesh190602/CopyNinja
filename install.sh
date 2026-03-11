@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — One-shot installer for copyninja (GNOME Wayland)
+# install.sh — One-shot installer for CopyNinja (Linux desktops: Wayland & X11)
 # Run as your normal user (NOT root).
 set -euo pipefail
 
@@ -10,24 +10,34 @@ error() { echo -e "${RED}[✗]${NC} $*"; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ── 0. Validate session ───────────────────────────────────────────────────
-if [[ "${XDG_SESSION_TYPE:-}" != "wayland" ]]; then
-    error "This build targets GNOME Wayland only. Current session: ${XDG_SESSION_TYPE:-unknown}."
-fi
-if [[ "${XDG_CURRENT_DESKTOP:-}" != *"GNOME"* ]]; then
-    error "This build targets GNOME Wayland only. Current desktop: ${XDG_CURRENT_DESKTOP:-unknown}."
-fi
-info "Detected session: GNOME Wayland"
+# ── 0. Detect session ────────────────────────────────────────────────────
+SESSION_TYPE="${XDG_SESSION_TYPE:-unknown}"
+DESKTOP="${XDG_CURRENT_DESKTOP:-unknown}"
+info "Detected session: $SESSION_TYPE ($DESKTOP)"
 
-# ── 1. Check dependencies ──────────────────────────────────────────────────
+if [[ "$SESSION_TYPE" != "wayland" && "$SESSION_TYPE" != "x11" ]]; then
+    warn "Unknown session type '$SESSION_TYPE'. Proceeding anyway — you may need to configure clipboard monitoring manually."
+fi
+
+# ── 1. Check dependencies ────────────────────────────────────────────────
 info "Checking dependencies…"
 
 MISSING=()
 PACKAGES_TO_INSTALL=()
 
-for cmd in python3 notify-send gsettings wtype; do
+# Always required
+for cmd in python3 notify-send; do
     command -v "$cmd" &>/dev/null || MISSING+=("$cmd")
 done
+
+# Session-specific tools
+if [[ "$SESSION_TYPE" == "wayland" ]]; then
+    command -v wl-paste &>/dev/null || MISSING+=("wl-paste")
+    command -v wtype &>/dev/null || MISSING+=("wtype")
+elif [[ "$SESSION_TYPE" == "x11" ]]; then
+    command -v xclip &>/dev/null || MISSING+=("xclip")
+    command -v xdotool &>/dev/null || MISSING+=("xdotool")
+fi
 
 # Check GTK4 + PyGObject
 if ! python3 - <<'PY' &>/dev/null; then
@@ -43,13 +53,15 @@ PY
     PACKAGES_TO_INSTALL+=("gtk4" "python-gobject")
 fi
 
-# Map common missing commands to package names
+# Map missing commands to package names
 for cmd in "${MISSING[@]}"; do
     case "$cmd" in
         python3)     PACKAGES_TO_INSTALL+=("python") ;;
         notify-send) PACKAGES_TO_INSTALL+=("libnotify") ;;
-        gsettings)   PACKAGES_TO_INSTALL+=("glib2") ;;
+        wl-paste)    PACKAGES_TO_INSTALL+=("wl-clipboard") ;;
         wtype)       PACKAGES_TO_INSTALL+=("wtype") ;;
+        xclip)       PACKAGES_TO_INSTALL+=("xclip") ;;
+        xdotool)     PACKAGES_TO_INSTALL+=("xdotool") ;;
     esac
 done
 
@@ -73,7 +85,7 @@ else
     info "All dependencies found."
 fi
 
-# ── 2. Install scripts ─────────────────────────────────────────────────────
+# ── 2. Install scripts ───────────────────────────────────────────────────
 info "Installing scripts to ~/.local/bin…"
 mkdir -p "$HOME/.local/bin"
 
@@ -82,57 +94,7 @@ cp "$SCRIPT_DIR/scripts/clippick.py"   "$HOME/.local/bin/clippick.py"
 chmod +x "$HOME/.local/bin/clipdaemon.py"
 chmod +x "$HOME/.local/bin/clippick.py"
 
-# ── 3. Install GNOME Shell extension ──────────────────────────────────────
-info "Installing GNOME Shell extension…"
-EXT_UUID="copyninja-clip@copyninja"
-EXT_DIR="$HOME/.local/share/gnome-shell/extensions/$EXT_UUID"
-
-# Check if the extension is already active — skip install to avoid crashing
-# GNOME Shell on Wayland (force-installing a running extension can crash it).
-EXT_STATE=$(gnome-extensions info "$EXT_UUID" 2>/dev/null | grep -oP '(?<=State: )\S+' || echo "unknown")
-NEEDS_LOGOUT=false
-
-if [[ "$EXT_STATE" == "ACTIVE" || "$EXT_STATE" == "ENABLED" ]]; then
-    # Update files in place (safe — no force reload)
-    mkdir -p "$EXT_DIR"
-    cp "$SCRIPT_DIR/extension/metadata.json" "$EXT_DIR/metadata.json"
-    cp "$SCRIPT_DIR/extension/extension.js"  "$EXT_DIR/extension.js"
-    info "Extension already active — files updated (takes effect on next login)."
-else
-    # Fresh install via gnome-extensions install (notifies the shell)
-    EXT_ZIP=$(mktemp /tmp/copyninja-ext-XXXXXX.zip)
-    (cd "$SCRIPT_DIR/extension" && zip -j "$EXT_ZIP" metadata.json extension.js) >/dev/null
-    gnome-extensions install --force "$EXT_ZIP"
-    rm -f "$EXT_ZIP"
-    info "Extension installed via gnome-extensions install"
-
-    # Try to enable it
-    if gnome-extensions enable "$EXT_UUID" 2>/dev/null; then
-        EXT_STATE=$(gnome-extensions info "$EXT_UUID" 2>/dev/null | grep -oP '(?<=State: )\S+' || echo "unknown")
-        if [[ "$EXT_STATE" == "ACTIVE" || "$EXT_STATE" == "ENABLED" ]]; then
-            info "Extension enabled in current session — no logout needed."
-        else
-            NEEDS_LOGOUT=true
-        fi
-    else
-        NEEDS_LOGOUT=true
-    fi
-
-    if [[ "$NEEDS_LOGOUT" == true ]]; then
-        ENABLED_EXTS=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo "@as []")
-        if ! echo "$ENABLED_EXTS" | grep -q "$EXT_UUID"; then
-            if [[ "$ENABLED_EXTS" == "@as []" ]]; then
-                NEW_EXTS="['$EXT_UUID']"
-            else
-                NEW_EXTS=$(echo "$ENABLED_EXTS" | sed "s|]|, '$EXT_UUID']|")
-            fi
-            gsettings set org.gnome.shell enabled-extensions "$NEW_EXTS"
-        fi
-        warn "Extension installed but could not activate in this session — a logout is needed."
-    fi
-fi
-
-# ── 4. Install systemd user service ────────────────────────────────────────
+# ── 3. Install systemd user service ──────────────────────────────────────
 info "Installing systemd user service…"
 SYSTEMD_DIR="$HOME/.config/systemd/user"
 mkdir -p "$SYSTEMD_DIR"
@@ -143,44 +105,101 @@ systemctl --user enable --now copyninja.service
 systemctl --user restart copyninja
 info "Daemon started and enabled on login."
 
-# ── 5. Hotkey setup (GNOME) ───────────────────────────────────────────────
-info "Setting Super+Shift+V keybinding automatically…"
+# ── 4. Hotkey setup (DE-specific) ────────────────────────────────────────
 CLIPHIST_CMD="$HOME/.local/bin/clippick.py"
-CUSTOM_PATH="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings"
+PICK_CMD="bash -c 'sleep 0.1 && /usr/bin/python3 $CLIPHIST_CMD'"
+COPYNINJA_MARKER="# CopyNinja keybinding"
 
-EXISTING=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings 2>/dev/null || echo "@as []")
-FOUND_SLOT=""
-for path_entry in $(echo "$EXISTING" | tr -d "[]',"); do
-    slot_name=$(gsettings get "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${path_entry}" name 2>/dev/null)
-    if [[ "$slot_name" == "'Clipboard History'" ]]; then
-        FOUND_SLOT="$path_entry"
-        break
+setup_gnome_keybinding() {
+    if ! command -v gsettings &>/dev/null; then
+        warn "gsettings not found — skipping GNOME keybinding setup."
+        return
     fi
-done
+    info "Setting Super+Shift+V keybinding (GNOME)…"
+    CUSTOM_PATH="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings"
 
-if [[ -n "$FOUND_SLOT" ]]; then
-    NEW_PATH="$FOUND_SLOT"
-else
-    SLOT=0
-    while echo "$EXISTING" | grep -q "custom${SLOT}/" 2>/dev/null; do
-        SLOT=$((SLOT + 1))
+    EXISTING=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings 2>/dev/null || echo "@as []")
+    FOUND_SLOT=""
+    for path_entry in $(echo "$EXISTING" | tr -d "[]',"); do
+        slot_name=$(gsettings get "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${path_entry}" name 2>/dev/null)
+        if [[ "$slot_name" == "'Clipboard History'" ]]; then
+            FOUND_SLOT="$path_entry"
+            break
+        fi
     done
-    NEW_PATH="${CUSTOM_PATH}/custom${SLOT}/"
 
-    if [[ "$EXISTING" == "@as []" ]]; then
-        NEW_LIST="['${NEW_PATH}']"
+    if [[ -n "$FOUND_SLOT" ]]; then
+        NEW_PATH="$FOUND_SLOT"
     else
-        NEW_LIST=$(echo "$EXISTING" | sed "s|]|, '${NEW_PATH}']|")
+        SLOT=0
+        while echo "$EXISTING" | grep -q "custom${SLOT}/" 2>/dev/null; do
+            SLOT=$((SLOT + 1))
+        done
+        NEW_PATH="${CUSTOM_PATH}/custom${SLOT}/"
+
+        if [[ "$EXISTING" == "@as []" ]]; then
+            NEW_LIST="['${NEW_PATH}']"
+        else
+            NEW_LIST=$(echo "$EXISTING" | sed "s|]|, '${NEW_PATH}']|")
+        fi
+        gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$NEW_LIST"
     fi
-    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$NEW_LIST"
-fi
 
-gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${NEW_PATH}" name 'Clipboard History'
-gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${NEW_PATH}" command "bash -c 'sleep 0.1 && /usr/bin/python3 $CLIPHIST_CMD'"
-gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${NEW_PATH}" binding '<Shift><Super>v'
-info "Keybinding set: Super+Shift+V → clippick.py"
+    gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${NEW_PATH}" name 'Clipboard History'
+    gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${NEW_PATH}" command "$PICK_CMD"
+    gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${NEW_PATH}" binding '<Shift><Super>v'
+    info "Keybinding set: Super+Shift+V → clippick.py"
+}
 
-# ── Done ───────────────────────────────────────────────────────────────────
+setup_wm_keybinding() {
+    local config_file="$1"
+    local bind_line="$2"
+
+    if [[ ! -f "$config_file" ]]; then
+        warn "Config file not found: $config_file — skipping keybinding setup."
+        echo "  Add this line manually: $bind_line"
+        return
+    fi
+
+    # Avoid duplicates
+    if grep -qF "$COPYNINJA_MARKER" "$config_file" 2>/dev/null; then
+        info "Keybinding already present in $config_file"
+        return
+    fi
+
+    echo "" >> "$config_file"
+    echo "$COPYNINJA_MARKER" >> "$config_file"
+    echo "$bind_line" >> "$config_file"
+    info "Keybinding added to $config_file"
+}
+
+case "$DESKTOP" in
+    *GNOME*)
+        setup_gnome_keybinding
+        ;;
+    *Hyprland*|*hyprland*)
+        setup_wm_keybinding \
+            "$HOME/.config/hypr/hyprland.conf" \
+            "bind = SUPER SHIFT, V, exec, $PICK_CMD"
+        ;;
+    *sway*|*Sway*)
+        setup_wm_keybinding \
+            "$HOME/.config/sway/config" \
+            "bindsym Mod4+Shift+v exec $PICK_CMD"
+        ;;
+    *i3*|*I3*)
+        setup_wm_keybinding \
+            "$HOME/.config/i3/config" \
+            "bindsym Mod4+Shift+v exec $PICK_CMD"
+        ;;
+    *)
+        warn "Automatic keybinding setup not supported for '$DESKTOP'."
+        echo "  Please bind Super+Shift+V to this command manually:"
+        echo "  $PICK_CMD"
+        ;;
+esac
+
+# ── Done ──────────────────────────────────────────────────────────────────
 info "Installation complete!"
 echo ""
 echo "  Daemon status:  systemctl --user status copyninja"
@@ -191,8 +210,4 @@ echo "    - Copy text normally, it will be saved automatically"
 echo "    - Press Super+Shift+V to open picker"
 echo "    - Click on any entry to copy and auto-paste"
 echo ""
-if [[ "$NEEDS_LOGOUT" == true ]]; then
-    warn "Please log out and back in to activate the GNOME Shell extension."
-else
-    info "Everything is ready — no logout needed. Enjoy CopyNinja!"
-fi
+info "Everything is ready — no logout needed. Enjoy CopyNinja!"

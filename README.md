@@ -1,31 +1,30 @@
-# CopyNinja — Clipboard History Manager for GNOME Wayland
+# CopyNinja — Clipboard History Manager for Linux
 
-A lightweight clipboard history panel for GNOME Wayland, inspired by Windows 11's Win+V.
+A lightweight clipboard history panel for Linux desktops (Wayland & X11), inspired by Windows 11's Win+V.
 Press **Super+Shift+V** to open a native GTK picker with search, pin, delete, and clear-all.
+
+Supports **GNOME, KDE Plasma, Hyprland, Sway, i3, XFCE**, and more.
 
 ---
 
 ## How It Works
 
-CopyNinja uses a **GNOME Shell extension** to detect clipboard changes instantly — no polling, no `wl-paste` subprocess hacks. Clipboard text is relayed to a background daemon over **D-Bus**, which stores it in a local JSON file.
+CopyNinja's daemon monitors the system clipboard directly — no GNOME extension needed. On Wayland it uses `wl-paste --watch` (event-driven), on X11 it polls via `xclip`. Clipboard text is stored in a local JSON file.
 
 ```
 Copy in any app
       │
       ▼
-  GNOME Wayland clipboard
+  System clipboard
       │
       ▼
 ┌─────────────────────────────────┐
-│  GNOME Shell Extension          │  ← detects clipboard owner-changed
-│  (copyninja-clip@copyninja)     │
-└────────────┬────────────────────┘
-             │  D-Bus call
-             ▼
-┌─────────────────────────────────┐
 │  clipdaemon.py  (background)    │  ← systemd user service
 │                                 │
-│  receives text via D-Bus        │
+│  Wayland: wl-paste --watch      │
+│  X11: xclip polling (500ms)     │
+│  + D-Bus input                  │
+│                                 │
 │  deduplicates (MD5 hash)        │
 │  stores in JSON                 │
 │  prunes old entries             │
@@ -45,7 +44,7 @@ Super+Shift+V
 │  reads clipboard_history.json   │
 │  shows Windows-like UI          │
 │  selection copies to clipboard  │
-│  auto-pastes via wtype          │
+│  auto-pastes via wtype/xdotool  │
 └────────────┬────────────────────┘
              │
              ▼
@@ -63,15 +62,14 @@ chmod +x install.sh
 ./install.sh
 ```
 
-> **Note:** The installer automatically logs you out after completing so the GNOME Shell extension loads on next login.
-
 The installer:
-- Installs dependencies (Arch/Fedora/Ubuntu)
+- Detects your session type (Wayland/X11) and desktop environment
+- Installs session-appropriate dependencies (Arch Linux)
 - Copies scripts to `~/.local/bin/`
-- Installs and enables the GNOME Shell extension (GNOME 45–49)
 - Enables the systemd user service
-- Sets the `Super+Shift+V` keybinding
-- **Automatically logs you out** so the extension loads on next login
+- Sets the `Super+Shift+V` keybinding (automatic for GNOME, Hyprland, Sway, i3; manual instructions for others)
+
+No logout required.
 
 ---
 
@@ -86,17 +84,25 @@ chmod +x uninstall.sh
 
 ## Dependencies
 
-| Package           | Purpose                      |
-|-------------------|------------------------------|
-| `python`          | Run daemon + picker          |
-| `python-gobject`  | GTK / GLib / D-Bus bindings  |
-| `gtk4`            | Native UI + clipboard access |
-| `libnotify`       | `notify-send` alerts         |
-| `wtype`           | Auto-paste via simulated Ctrl+V (Wayland) |
+| Package           | Purpose                              | Session   |
+|-------------------|--------------------------------------|-----------|
+| `python`          | Run daemon + picker                  | All       |
+| `python-gobject`  | GTK / GLib / D-Bus bindings          | All       |
+| `gtk4`            | Native UI + clipboard access         | All       |
+| `libnotify`       | `notify-send` alerts                 | All       |
+| `wl-clipboard`    | Clipboard monitoring (`wl-paste`)    | Wayland   |
+| `wtype`           | Auto-paste via simulated Ctrl+V      | Wayland   |
+| `xclip`           | Clipboard monitoring                 | X11       |
+| `xdotool`         | Auto-paste via simulated Ctrl+V      | X11       |
 
-Install all at once (Arch):
+Install for Wayland (Arch):
 ```bash
-sudo pacman -S python python-gobject gtk4 libnotify wtype
+sudo pacman -S python python-gobject gtk4 libnotify wl-clipboard wtype
+```
+
+Install for X11 (Arch):
+```bash
+sudo pacman -S python python-gobject gtk4 libnotify xclip xdotool
 ```
 
 ---
@@ -105,16 +111,11 @@ sudo pacman -S python python-gobject gtk4 libnotify wtype
 
 ```
 ~/.local/bin/
-├── clipdaemon.py                          ← D-Bus daemon
+├── clipdaemon.py                          ← clipboard daemon
 └── clippick.py                            ← GTK picker
 
 ~/.config/systemd/user/
 └── copyninja.service                      ← auto-starts daemon on login
-
-~/.local/share/gnome-shell/extensions/
-└── copyninja-clip@copyninja/
-    ├── extension.js                       ← clipboard relay
-    └── metadata.json
 
 ~/.clipboard_history.json                  ← clipboard history store
 ```
@@ -162,15 +163,27 @@ systemctl --user disable copyninja
 
 ---
 
+## Supported Keybinding Setup
+
+| Desktop Environment | Keybinding Setup          |
+|---------------------|---------------------------|
+| GNOME               | Automatic (gsettings)     |
+| Hyprland            | Automatic (hyprland.conf) |
+| Sway                | Automatic (sway config)   |
+| i3                  | Automatic (i3 config)     |
+| KDE / XFCE / Other  | Manual (instructions shown) |
+
+---
+
 ## Windows Comparison
 
 | Windows Win+V                | CopyNinja                        |
 |------------------------------|----------------------------------|
 | Clipboard history panel      | GTK picker UI                    |
 | Click entry to copy          | Click/Enter to copy + auto-paste |
-| Auto-paste                   | Auto-paste via `wtype`           |
+| Auto-paste                   | Auto-paste via `wtype`/`xdotool` |
 | Cloud sync                   | Local-only JSON                  |
-| Polling-based                | Event-driven (D-Bus)             |
+| Polling-based                | Event-driven (Wayland) / polling (X11) |
 
 ---
 

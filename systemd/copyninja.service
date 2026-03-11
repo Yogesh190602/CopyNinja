@@ -1,5 +1,5 @@
 [Unit]
-Description=CopyNinja — Clipboard History Daemon (GNOME Wayland)
+Description=CopyNinja — Clipboard History Daemon
 Documentation=https://github.com/Yogesh190602/CopyNinja
 PartOf=graphical-session.target
 After=graphical-session.target

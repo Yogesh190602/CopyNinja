@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-clippick.py - Windows 11-style clipboard history picker (GNOME Wayland)
+clippick.py - Windows 11-style clipboard history picker (Linux desktops)
 Reads from JSON file and copies selected entry to clipboard.
 """
 
 import sys
+import os
 import json
 import time
 import subprocess
@@ -579,11 +580,21 @@ class ClipPickApp(Gtk.Application):
         return False
 
     def _simulate_paste(self):
-        """Simulate Ctrl+V via wtype to auto-paste into the focused window."""
-        if shutil.which("wtype"):
+        """Simulate Ctrl+V to auto-paste into the focused window."""
+        session = os.environ.get("XDG_SESSION_TYPE", "unknown")
+        if session == "wayland" and shutil.which("wtype"):
             try:
                 subprocess.Popen(
                     ["wtype", "-M", "ctrl", "-k", "v"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                pass
+        elif session == "x11" and shutil.which("xdotool"):
+            try:
+                subprocess.Popen(
+                    ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
