@@ -77,12 +77,11 @@ for cmd in python3 notify-send; do
 done
 
 # Session-specific tools
-# xclip + xdotool always needed (fallback for GNOME Wayland via XWayland + X11)
-command -v xclip &>/dev/null || MISSING+=("xclip")
-command -v xdotool &>/dev/null || MISSING+=("xdotool")
 if [[ "$SESSION_TYPE" == "wayland" || "$SESSION_TYPE" == "both" ]]; then
     command -v wl-paste &>/dev/null || MISSING+=("wl-paste")
-    command -v wtype &>/dev/null || MISSING+=("wtype")
+fi
+if [[ "$SESSION_TYPE" == "x11" || "$SESSION_TYPE" == "both" ]]; then
+    command -v xclip &>/dev/null || MISSING+=("xclip")
 fi
 
 # Check GTK4 + PyGObject
@@ -105,9 +104,7 @@ for cmd in "${MISSING[@]}"; do
         python3)     PACKAGES_TO_INSTALL+=("python") ;;
         notify-send) PACKAGES_TO_INSTALL+=("libnotify") ;;
         wl-paste)    PACKAGES_TO_INSTALL+=("wl-clipboard") ;;
-        wtype)       PACKAGES_TO_INSTALL+=("wtype") ;;
         xclip)       PACKAGES_TO_INSTALL+=("xclip") ;;
-        xdotool)     PACKAGES_TO_INSTALL+=("xdotool") ;;
     esac
 done
 
@@ -257,6 +254,6 @@ echo ""
 echo "  Usage:"
 echo "    - Copy text normally, it will be saved automatically"
 echo "    - Press Super+Shift+V to open picker"
-echo "    - Click on any entry to copy and auto-paste"
+echo "    - Click on any entry to copy it, then paste with Ctrl+V"
 echo ""
 info "Everything is ready — no logout needed. Enjoy CopyNinja!"

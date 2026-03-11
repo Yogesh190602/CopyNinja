@@ -11,14 +11,14 @@ CopyNinja is a lightweight clipboard history manager for **Linux desktops (Wayla
 The daemon monitors the system clipboard directly — using `wl-paste --watch` on Wayland or `xclip` polling on X11. It stores entries in a JSON file. A GTK picker reads that file to display history.
 
 - **clipdaemon.py** — Background daemon (systemd user service). Monitors the clipboard (Wayland via `wl-paste --watch`, X11 via `xclip` polling), also accepts text via D-Bus (`com.copyninja.Daemon.NewEntry`), deduplicates via MD5 hashing, stores entries in `~/.clipboard_history.json`.
-- **clippick.py** — GTK-based picker invoked by a keybinding. Reads `~/.clipboard_history.json`, copies the selected item, and auto-pastes into the previously focused window via `wtype` (Wayland) or `xdotool` (X11). Graceful fallback to copy-only if neither is available.
+- **clippick.py** — GTK-based picker invoked by a keybinding. Reads `~/.clipboard_history.json`, copies the selected item to the clipboard. User pastes manually with Ctrl+V.
 
 Config constant `MAX_ENTRIES` is at the top of `clipdaemon.py`.
 
 ## Key Files
 
 - `scripts/clipdaemon.py` — Daemon: clipboard monitoring, D-Bus service, JSON storage, dedup, entry pruning
-- `scripts/clippick.py` — Picker: GTK UI, search, pin/delete/clear, clipboard set, auto-paste
+- `scripts/clippick.py` — Picker: GTK UI, search, pin/delete/clear, clipboard set
 - `systemd/copyninja.service` — Systemd user unit
 - `install.sh` — Installs scripts and service; sets DE-specific Super+Shift+V keybinding (GNOME, Hyprland, Sway, i3)
 - `uninstall.sh` — Removes everything
@@ -35,11 +35,11 @@ journalctl --user -u copyninja -f         # live logs
 ## Dependencies
 
 **Always:** `python`, `python-gobject`, `gtk4`, `libnotify`
-**Wayland:** `wl-clipboard` (provides `wl-paste`), `wtype`
-**X11:** `xclip`, `xdotool`
+**Wayland:** `wl-clipboard` (provides `wl-paste`)
+**X11:** `xclip`
 
 ## Development Notes
 
 - No build step, tests, or linter configured — two Python 3 scripts.
 - The daemon is event-driven on Wayland (`wl-paste --watch` + GLib.IOChannel) and polling-based on X11 (`xclip` every 500ms).
-- The picker auto-pastes using `wtype` (Wayland) or `xdotool` (X11). Falls back to copy-only if neither is installed.
+- The picker copies the selected item to clipboard. User pastes manually with Ctrl+V.

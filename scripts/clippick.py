@@ -8,8 +8,6 @@ import sys
 import os
 import json
 import time
-import subprocess
-import shutil
 from pathlib import Path
 
 import gi
@@ -562,49 +560,11 @@ class ClipPickApp(Gtk.Application):
         text = getattr(row, "_entry_text", "")
         if text:
             self._copy_to_clipboard(text)
-            self.hold()
-            self.window.set_visible(False)
-            GLib.timeout_add(200, self._paste_and_quit)
+            self.quit()
 
     def _copy_to_clipboard(self, text):
         clipboard = Gdk.Display.get_default().get_clipboard()
         clipboard.set(text)
-
-    def _paste_and_quit(self):
-        self._simulate_paste()
-        GLib.timeout_add(300, self._do_quit)
-        return False
-
-    def _do_quit(self):
-        self.quit()
-        return False
-
-    def _simulate_paste(self):
-        """Simulate Ctrl+V to auto-paste into the focused window."""
-        # Try wtype first (works on wlroots: Hyprland, Sway)
-        # Then xdotool (works on X11 and GNOME Wayland via XWayland)
-        if shutil.which("wtype"):
-            try:
-                result = subprocess.run(
-                    ["wtype", "-M", "ctrl", "-k", "v"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=2,
-                )
-                if result.returncode == 0:
-                    return False
-            except Exception:
-                pass
-        if shutil.which("xdotool"):
-            try:
-                subprocess.Popen(
-                    ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            except Exception:
-                pass
-        return False
 
     def _on_key_pressed(self, controller, keyval, keycode, state):
         ctrl = state & Gdk.ModifierType.CONTROL_MASK
@@ -619,9 +579,7 @@ class ClipPickApp(Gtk.Application):
                 text = getattr(selected, "_entry_text", "")
                 if text:
                     self._copy_to_clipboard(text)
-                    self.hold()
-                    self.window.set_visible(False)
-                    GLib.timeout_add(200, self._paste_and_quit)
+                    self.quit()
             return True
 
         if ctrl:

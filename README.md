@@ -44,11 +44,10 @@ Super+Shift+V
 │  reads clipboard_history.json   │
 │  shows Windows-like UI          │
 │  selection copies to clipboard  │
-│  auto-pastes via wtype/xdotool  │
 └────────────┬────────────────────┘
              │
              ▼
-      Clipboard updated + auto-pasted
+      Clipboard updated (paste with Ctrl+V)
 ```
 
 ---
@@ -91,18 +90,16 @@ chmod +x uninstall.sh
 | `gtk4`            | Native UI + clipboard access         | All       |
 | `libnotify`       | `notify-send` alerts                 | All       |
 | `wl-clipboard`    | Clipboard monitoring (`wl-paste`)    | Wayland   |
-| `wtype`           | Auto-paste via simulated Ctrl+V      | Wayland   |
 | `xclip`           | Clipboard monitoring                 | X11       |
-| `xdotool`         | Auto-paste via simulated Ctrl+V      | X11       |
 
 Install for Wayland (Arch):
 ```bash
-sudo pacman -S python python-gobject gtk4 libnotify wl-clipboard wtype
+sudo pacman -S python python-gobject gtk4 libnotify wl-clipboard
 ```
 
 Install for X11 (Arch):
 ```bash
-sudo pacman -S python python-gobject gtk4 libnotify xclip xdotool
+sudo pacman -S python python-gobject gtk4 libnotify xclip
 ```
 
 ---
@@ -126,7 +123,7 @@ sudo pacman -S python python-gobject gtk4 libnotify xclip xdotool
 
 | Key       | Action                             |
 |-----------|------------------------------------|
-| `Enter`   | Copy selected item and auto-paste  |
+| `Enter`   | Copy selected item to clipboard    |
 | `Ctrl+D`  | Delete selected item               |
 | `Ctrl+P`  | Pin/unpin selected item            |
 | `Ctrl+L`  | Clear all (press twice to confirm) |
@@ -180,8 +177,8 @@ systemctl --user disable copyninja
 | Windows Win+V                | CopyNinja                        |
 |------------------------------|----------------------------------|
 | Clipboard history panel      | GTK picker UI                    |
-| Click entry to copy          | Click/Enter to copy + auto-paste |
-| Auto-paste                   | Auto-paste via `wtype`/`xdotool` |
+| Click entry to copy          | Click/Enter to copy to clipboard |
+| Auto-paste                   | Manual paste (Ctrl+V)            |
 | Cloud sync                   | Local-only JSON                  |
 | Polling-based                | Event-driven (Wayland) / polling (X11) |
 
