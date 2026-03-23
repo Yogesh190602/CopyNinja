@@ -99,7 +99,8 @@ fn import_graphical_env() -> Option<SessionType> {
             for var in environ_str.split('\0') {
                 if let Some((key, value)) = var.split_once('=') {
                     match key {
-                        "WAYLAND_DISPLAY" | "DISPLAY" | "XDG_RUNTIME_DIR" => {
+                        "WAYLAND_DISPLAY" | "DISPLAY" | "XDG_RUNTIME_DIR"
+                        | "XDG_SESSION_TYPE" | "XDG_CURRENT_DESKTOP" | "DBUS_SESSION_BUS_ADDRESS" => {
                             debug!("Importing {}={} from session {}", key, value, sid);
                             // SAFETY: called during single-threaded init before watchers start
                             unsafe {

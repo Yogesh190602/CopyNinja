@@ -206,10 +206,10 @@ step "Installing systemd user service…"
 SYSTEMD_DIR="$HOME/.config/systemd/user"
 mkdir -p "$SYSTEMD_DIR"
 
-cat > "$SYSTEMD_DIR/copyninja.service" << EOF
+cat > "$SYSTEMD_DIR/copyninja.service" << 'SERVICEEOF'
 [Unit]
 Description=CopyNinja — Clipboard History Daemon
-Documentation=https://github.com/Yogesh190602/CopyNinja
+Documentation=https://github.com/Yogesh190602/Copyninja
 PartOf=graphical-session.target
 After=graphical-session.target
 
@@ -219,10 +219,17 @@ ExecStart=%h/.local/bin/copyninja daemon
 Restart=on-failure
 RestartSec=3s
 Environment=RUST_LOG=info
+# Ensure graphical session env vars are available
+PassEnvironment=WAYLAND_DISPLAY DISPLAY XDG_RUNTIME_DIR XDG_SESSION_TYPE XDG_CURRENT_DESKTOP
 
 [Install]
 WantedBy=graphical-session.target
-EOF
+SERVICEEOF
+
+# Import current graphical env vars into systemd user manager
+# so the service can access WAYLAND_DISPLAY, DISPLAY, etc.
+step "Importing graphical session environment into systemd…"
+systemctl --user import-environment WAYLAND_DISPLAY DISPLAY XDG_RUNTIME_DIR XDG_SESSION_TYPE XDG_CURRENT_DESKTOP 2>/dev/null || true
 
 systemctl --user daemon-reload
 systemctl --user enable copyninja.service
