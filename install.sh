@@ -134,28 +134,65 @@ if command -v ydotool &>/dev/null; then
 fi
 
 # ── 2. Build the Rust binary ──────────────────────────────────────────────
-step "Building CopyNinja (release mode)…"
-echo "  First build compiles all dependencies — this takes 1-2 minutes."
+# ── 2. Get the binary (prebuilt download or build from source) ───────────
+BUILT_BINARY=""
+GITHUB_REPO="Yogesh190602/Copyninja"
 
-if ! command -v cargo &>/dev/null; then
-    error "Rust toolchain not found. Install via: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+# Try downloading prebuilt binary from latest GitHub release
+try_download_binary() {
+    if ! command -v curl &>/dev/null; then
+        return 1
+    fi
+
+    step "Checking for prebuilt binary on GitHub…"
+    local url="https://github.com/$GITHUB_REPO/releases/latest/download/copyninja"
+    local tmp_binary="$SCRIPT_DIR/.copyninja_download"
+
+    if curl -fsSL --connect-timeout 5 --max-time 30 -o "$tmp_binary" "$url" 2>/dev/null; then
+        if file "$tmp_binary" | grep -q "ELF.*executable"; then
+            chmod +x "$tmp_binary"
+            BUILT_BINARY="$tmp_binary"
+            info "Downloaded prebuilt binary ($(du -h "$tmp_binary" | cut -f1))"
+            return 0
+        else
+            rm -f "$tmp_binary"
+        fi
+    fi
+
+    return 1
+}
+
+# Build from source
+build_from_source() {
+    step "Building CopyNinja from source (release mode)…"
+    echo "  First build compiles dependencies — this may take 1-2 minutes."
+
+    if ! command -v cargo &>/dev/null; then
+        error "Rust toolchain not found. Install via: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+    fi
+
+    cd "$SCRIPT_DIR"
+    cargo build --release 2>&1 | grep -E "Compiling copyninja|Finished|error" || true
+    BUILT_BINARY="$SCRIPT_DIR/target/release/$BINARY_NAME"
+
+    if [[ ! -f "$BUILT_BINARY" ]]; then
+        error "Build failed — binary not found at $BUILT_BINARY"
+    fi
+
+    info "Build complete: $(du -h "$BUILT_BINARY" | cut -f1) binary"
+}
+
+# Try prebuilt first, fall back to source build
+if ! try_download_binary; then
+    build_from_source
 fi
-
-cd "$SCRIPT_DIR"
-cargo build --release 2>&1 | grep -E "Compiling copyninja|Finished|error" || true
-BUILT_BINARY="$SCRIPT_DIR/target/release/$BINARY_NAME"
-
-if [[ ! -f "$BUILT_BINARY" ]]; then
-    error "Build failed — binary not found at $BUILT_BINARY"
-fi
-
-info "Build complete: $(du -h "$BUILT_BINARY" | cut -f1) binary"
 
 # ── 3. Install binary ─────────────────────────────────────────────────────
 step "Installing binary to $INSTALL_DIR…"
 mkdir -p "$INSTALL_DIR"
 cp "$BUILT_BINARY" "$INSTALL_DIR/$BINARY_NAME"
 chmod +x "$INSTALL_DIR/$BINARY_NAME"
+rm -f "$SCRIPT_DIR/.copyninja_download" 2>/dev/null
 
 # Clean up legacy Python scripts if present
 if [[ -f "$INSTALL_DIR/clipdaemon.py" ]]; then
