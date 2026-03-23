@@ -1,0 +1,17 @@
+# Rust
+/target/
+*.rs.bk
+
+# Data
+*.db
+*.json.bak
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Claude
+.claude/
