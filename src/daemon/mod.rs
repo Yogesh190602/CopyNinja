@@ -23,12 +23,21 @@ pub fn run(config: &crate::config::Config) {
 async fn run_async() -> anyhow::Result<()> {
     info!("CopyNinja daemon starting");
 
+    // Always try to import graphical session env vars first
+    // This fixes systemd services that don't inherit WAYLAND_DISPLAY etc.
+    session::ensure_graphical_env();
+
     let _conn = dbus::setup().await?;
     info!("D-Bus service registered: com.copyninja.Daemon");
 
     // Retry loop: try to start clipboard watcher for up to 5 minutes
     const MAX_RETRIES: u32 = 60;
     for attempt in 0..MAX_RETRIES {
+        // Re-detect session each attempt (env vars may appear after compositor starts)
+        if attempt > 0 {
+            session::ensure_graphical_env();
+        }
+
         let session = session::detect();
         info!(
             "Session type: {:?} (attempt {}/{})",
@@ -39,24 +48,19 @@ async fn run_async() -> anyhow::Result<()> {
 
         match session {
             SessionType::Wayland => {
-                // Try native Wayland watcher first
                 match wayland::start().await {
                     Ok(()) => return Ok(()),
                     Err(e) => {
                         warn!("Wayland watcher failed: {}", e);
-                        // Fall back to X11 (XWayland) like GNOME Wayland
-                        info!("Trying X11/XWayland fallback...");
-                        match x11::start().await {
-                            Ok(()) => return Ok(()),
-                            Err(e) => warn!("X11 fallback failed: {}", e),
-                        }
                     }
                 }
             }
-            SessionType::X11 => match x11::start().await {
-                Ok(()) => return Ok(()),
-                Err(e) => warn!("X11 watcher failed: {}", e),
-            },
+            SessionType::X11 => {
+                match x11::start().await {
+                    Ok(()) => return Ok(()),
+                    Err(e) => warn!("X11 watcher failed: {}", e),
+                }
+            }
             SessionType::Unknown => {
                 warn!("No graphical session detected yet");
             }

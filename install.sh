@@ -231,6 +231,43 @@ SERVICEEOF
 step "Importing graphical session environment into systemd…"
 systemctl --user import-environment WAYLAND_DISPLAY DISPLAY XDG_RUNTIME_DIR XDG_SESSION_TYPE XDG_CURRENT_DESKTOP 2>/dev/null || true
 
+# Create a login helper that imports env vars on every graphical session start
+# This ensures WAYLAND_DISPLAY etc. reach systemd even when logging in from TTY
+PROFILE_SNIPPET="$HOME/.config/copyninja/import-env.sh"
+mkdir -p "$(dirname "$PROFILE_SNIPPET")"
+cat > "$PROFILE_SNIPPET" << 'ENVEOF'
+#!/bin/bash
+# CopyNinja: import graphical session env vars into systemd user manager
+# Sourced by shell profile or compositor config on login
+if [ -n "$WAYLAND_DISPLAY" ] || [ -n "$DISPLAY" ]; then
+    systemctl --user import-environment WAYLAND_DISPLAY DISPLAY XDG_RUNTIME_DIR XDG_SESSION_TYPE XDG_CURRENT_DESKTOP 2>/dev/null
+    systemctl --user restart copyninja.service 2>/dev/null
+fi
+ENVEOF
+chmod +x "$PROFILE_SNIPPET"
+
+# Auto-source it from common compositor configs
+case "$DESKTOP" in
+    *Hyprland*|*hyprland*)
+        HYPR_CONF="$HOME/.config/hypr/hyprland.conf"
+        if [[ -f "$HYPR_CONF" ]] && ! grep -q "copyninja/import-env" "$HYPR_CONF" 2>/dev/null; then
+            echo "" >> "$HYPR_CONF"
+            echo "# CopyNinja env import" >> "$HYPR_CONF"
+            echo "exec-once = $PROFILE_SNIPPET" >> "$HYPR_CONF"
+            info "Added env import to Hyprland config."
+        fi
+        ;;
+    *sway*|*Sway*)
+        SWAY_CONF="$HOME/.config/sway/config"
+        if [[ -f "$SWAY_CONF" ]] && ! grep -q "copyninja/import-env" "$SWAY_CONF" 2>/dev/null; then
+            echo "" >> "$SWAY_CONF"
+            echo "# CopyNinja env import" >> "$SWAY_CONF"
+            echo "exec $PROFILE_SNIPPET" >> "$SWAY_CONF"
+            info "Added env import to Sway config."
+        fi
+        ;;
+esac
+
 systemctl --user daemon-reload
 systemctl --user enable copyninja.service
 systemctl --user restart copyninja.service

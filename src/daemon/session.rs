@@ -10,6 +10,21 @@ pub enum SessionType {
     Unknown,
 }
 
+/// Ensure graphical session environment variables are set.
+/// Imports WAYLAND_DISPLAY, DISPLAY, etc. from the active graphical session
+/// if they're not already present. This fixes systemd services that don't
+/// inherit these vars from the compositor.
+pub fn ensure_graphical_env() {
+    let needs_wayland = env::var("WAYLAND_DISPLAY").is_err();
+    let needs_display = env::var("DISPLAY").is_err();
+    let needs_runtime = env::var("XDG_RUNTIME_DIR").is_err();
+
+    if needs_wayland || needs_display || needs_runtime {
+        debug!("Missing display env vars, attempting import from active session");
+        let _ = import_graphical_env();
+    }
+}
+
 pub fn detect() -> SessionType {
     // Strategy 1: XDG_SESSION_TYPE
     if let Ok(session) = env::var("XDG_SESSION_TYPE") {
