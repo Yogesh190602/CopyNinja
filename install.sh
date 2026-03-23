@@ -112,28 +112,37 @@ else
     info "All runtime dependencies found."
 fi
 
-# Ensure ydotoold is running (required for ydotool auto-paste on Wayland)
+# Add user to input group (required for ydotool uinput access)
 if command -v ydotool &>/dev/null; then
-    if ! systemctl --user is-active ydotoold &>/dev/null; then
-        step "Enabling ydotoold service (required for auto-paste)…"
-        systemctl --user enable --now ydotoold 2>/dev/null || \
-            sudo systemctl enable --now ydotoold 2>/dev/null || \
-            warn "Could not start ydotoold. Auto-paste may not work. Try: sudo systemctl enable --now ydotoold"
+    if ! groups "$USER" | grep -qw input; then
+        step "Adding $USER to input group (required for ydotool)…"
+        sudo usermod -aG input "$USER"
+        info "Added $USER to input group. You may need to log out and back in for this to take effect."
     fi
-    if systemctl --user is-active ydotoold &>/dev/null || systemctl is-active ydotoold &>/dev/null; then
-        info "ydotoold is running."
+fi
+
+# Ensure ydotool service is enabled and running (user service: ydotool.service)
+if command -v ydotool &>/dev/null; then
+    if ! systemctl --user is-active ydotool.service &>/dev/null; then
+        step "Enabling ydotool service (required for auto-paste)…"
+        systemctl --user enable --now ydotool.service 2>/dev/null || \
+            warn "Could not start ydotool.service. Auto-paste may not work. Try: systemctl --user enable --now ydotool.service"
+    fi
+    if systemctl --user is-active ydotool.service &>/dev/null; then
+        info "ydotool service is running."
     fi
 fi
 
 # ── 2. Build the Rust binary ──────────────────────────────────────────────
 step "Building CopyNinja (release mode)…"
+echo "  First build compiles all dependencies — this takes 1-2 minutes."
 
 if ! command -v cargo &>/dev/null; then
     error "Rust toolchain not found. Install via: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
 fi
 
 cd "$SCRIPT_DIR"
-cargo build --release 2>&1 | tail -3
+cargo build --release 2>&1 | grep -E "Compiling copyninja|Finished|error" || true
 BUILT_BINARY="$SCRIPT_DIR/target/release/$BINARY_NAME"
 
 if [[ ! -f "$BUILT_BINARY" ]]; then
