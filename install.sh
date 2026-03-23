@@ -83,6 +83,7 @@ command -v xdotool &>/dev/null || { MISSING+=("xdotool"); PACKAGES_TO_INSTALL+=(
 if [[ "$SESSION_TYPE" == "wayland" || "$SESSION_TYPE" == "both" ]]; then
     command -v wl-paste &>/dev/null || { MISSING+=("wl-paste"); PACKAGES_TO_INSTALL+=("wl-clipboard"); }
     command -v wtype    &>/dev/null || { MISSING+=("wtype");    PACKAGES_TO_INSTALL+=("wtype"); }
+    command -v ydotool  &>/dev/null || { MISSING+=("ydotool");  PACKAGES_TO_INSTALL+=("ydotool"); }
 fi
 
 # Check GTK4 system library (needed by the Rust binary at runtime)
@@ -109,6 +110,19 @@ if [[ ${#MISSING[@]} -gt 0 ]]; then
     fi
 else
     info "All runtime dependencies found."
+fi
+
+# Ensure ydotoold is running (required for ydotool auto-paste on Wayland)
+if command -v ydotool &>/dev/null; then
+    if ! systemctl --user is-active ydotoold &>/dev/null; then
+        step "Enabling ydotoold service (required for auto-paste)…"
+        systemctl --user enable --now ydotoold 2>/dev/null || \
+            sudo systemctl enable --now ydotoold 2>/dev/null || \
+            warn "Could not start ydotoold. Auto-paste may not work. Try: sudo systemctl enable --now ydotoold"
+    fi
+    if systemctl --user is-active ydotoold &>/dev/null || systemctl is-active ydotoold &>/dev/null; then
+        info "ydotoold is running."
+    fi
 fi
 
 # ── 2. Build the Rust binary ──────────────────────────────────────────────
